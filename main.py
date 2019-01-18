@@ -1,152 +1,124 @@
-# Made by: Carlos Leon, Ryan Arjun, Subhrajyoti Pradhan
+# Made by: Carlos Leon, Subhrajyoti Pradhan
+# Strong Thanks to Dr. Neil Tempest
 
 ## Import required libraries
-import os
-import sys
 import numpy as np
-import pandas as pd
-from sklearn.model_selection import KFold
-from sklearn.preprocessing import MinMaxScaler
+import warnings
+from sklearn.model_selection import KFold, GridSearchCV
+from sklearn.metrics import pairwise_distances
 from sklearn.neighbors import KNeighborsClassifier
-from performance import perf_main
 
-## Import the 5 feature selection algorithms
-import varience_threshold as vt
-import tree_selection_features as tsf
-import recursive_features as rf
-import chi_square as cs
-import information_gain as ig
+## Import data management
+import loadData as ld
+import performance as p
+import novelty_detection_system as nd
+from templateOptimization import optimize
 
-## Import outliers detection system
-import outlier_detection_system as ods
+## Ignore Warnings
+warnings.filterwarnings("ignore")
 
-## GLobal Variables
-debug = 1                                                    
-dataset_path = "dataset1/data/"
+## Declare Variables
+dataset_path = "dataset/data/"
 k_folds = 5
-k_neighbors = 7
-headers = ['Hold .', 'Hold t', 'Hold i', 'Hold e', 'Hold Shift',
-'Hold 5', 'Hold Shift.1', 'Hold Caps', 'Hold r', 'Hold o', 'Hold a',
-'Hold n', 'Hold l', 'Hold Enter', 'DD ..t', 'DD t.i', 'DD i.e',
-'DD e.Shift', 'DD Shift.5', 'DD 5.Shift', 'DD Shift.Caps', 'DD Caps.r',
-'DD r.o', 'DD o.a', 'DD a.n', 'DD n.l', 'DD l.Enter', 'UD ..t',
-'UD t.i', 'UD i.e', 'UD e.Shift', 'UD Shift.5', 'UD 5.Shift',
-'UD Shift.Caps', 'UD Caps.r', 'UD r.o', 'UD o.a', 'UD a.n', 'UD n.l',
-'UD l.Enter', 'Pressure .', 'Pressure t', 'Pressure i', 'Pressure e',
-'Pressure Shift', 'Pressure 5', 'Pressure Shift.1', 'Pressure Caps',
-'Pressure r', 'Pressure o', 'Pressure a', 'Pressure n', 'Pressure l',
-'Pressure Enter', 'Size .', 'Size t', 'Size i', 'Size e', 'Size Shift',
-'Size 5', 'Size Shift.1', 'Size Caps', 'Size r', 'Size o', 'Size a',
-'Size n', 'Size l', 'Size Enter', 'AvH', 'AvP', 'AvA']
+counter = 1
+fold_performance = []
 
 ## Load the dataset
-raw_data = pd.DataFrame(columns=headers, data=[])
-raw_data_ids = []
-ids = 0
-temp_list = []
-files = os.listdir(dataset_path)
-for f in files:
-    temp = pd.read_csv(dataset_path + f, header=None, names=headers)
-    temp_list.append(temp)
-    raw_data_ids.extend([ids]*len(temp.index))    
-    ids += 1
-    if debug == 1 and ids == 15:
-        break
-raw_data = pd.concat(temp_list)
-raw_data = raw_data.astype(np.float64)
-raw_data_ids = np.array(raw_data_ids)
-print("Total number of raw rows: ", len(raw_data))
-print("Total number of users: ", len(files))
+raw_data, raw_data_ids, unique_ids = ld.loadData(dataset_path)
 
-## Perform feature selection
-varience_threshold_features = vt.get_features(raw_data, raw_data_ids)
-tree_selection_features = tsf.get_features(raw_data, raw_data_ids, debug=debug)
-recusive_features = rf.get_features(raw_data, raw_data_ids, debug=debug)
-chi_square_features = cs.get_features(raw_data, raw_data_ids)
-information_gain_features = ig.get_features(raw_data, raw_data_ids)
+## Determine parameters
+# Determine range
+range_of_k = []
+middle = int(np.floor(np.sqrt(len(unique_ids))))
+if middle % 2 == 0:
+    middle += 1
+for i in range(middle - 5, middle + 5):
+    if i > 0 and i % 2 != 0:
+        range_of_k.append(i)
 
-## Take the intersection of the features
-features = set(chi_square_features).intersection(recusive_features)
-features = features.intersection(varience_threshold_features)
-features = features.intersection(tree_selection_features)
-features = features.intersection(information_gain_features)
+# Instantiate classifiers
+parameters = {"n_neighbors": range_of_k}
+knn = KNeighborsClassifier(n_neighbors=3)
 
-## Remove the unused features from raw_data
-for i in reversed(range(len(raw_data.columns))):
-   if i not in features:
-       col = raw_data.columns[i]
-       raw_data = raw_data.drop(columns=col, axis=1)
-print("Remaining number post intersection: ", len(raw_data.columns), " columns")
-    
-## Perform cross validation
+## Perform k-fold cross validation
 kf = KFold(n_splits=k_folds, shuffle=True)
-scaler = MinMaxScaler()
-clf = KNeighborsClassifier(n_neighbors=k_neighbors)
-
-# Set aside performance variables
-genuine_scores = []
-impostor_scores = []
-total_accuracy = 0.
-
 for train, test in kf.split(raw_data, raw_data_ids):
 
-    # Get current folds data
-    accuracy = 0.
-    template = raw_data.values[train, :]
+    # log
+    print("Fold ", counter, " of ", k_folds)
+    counter += 1
+
+    # Create fold variables 
+    genuine_scores = []
+    imposter_scores = []
+
+    # Separate fold data
+    templates = raw_data[train, :]
     template_ids = raw_data_ids[train]
+    queries = raw_data[test, :]
+    query_ids = raw_data_ids[test]
 
-    # Remove outliers from training data
-    template, template_ids = ods.remove_outliers(template, template_ids)
+    # Retrieve user specific ideal parameters
+    params, templates, template_ids = optimize(templates, template_ids)
 
-    # Scale data
-    template = scaler.fit_transform(template)
+    # Generate training data per user
+    training_data = []
+    training_ids = []
+    for uid in unique_ids:
+        # Get optimal parameters
+        param = [p for p in params if p[0] == uid]
+        features = param[0][1]
+        inliers = param[0][2]
 
-    # Train on data
-    clf.fit(template, template_ids)
+        # Get template
+        t = templates[template_ids == uid]
+        t = nd.refine_templates(t, inliers, features)
 
-    # Test on data
-    for test_index in range(len(test)):
+        # Set aside the data
+        training_data.extend(t)
+        training_ids.extend([param[0][0]] * len(t))
 
-        # Get and Scale query
-        query = raw_data.values[test[test_index], :]
-        query = query.reshape(len(query), 1)
-        query = scaler.fit_transform(query)
-        query = query.reshape(1, -1)
-        query_label = raw_data_ids[test[test_index]]
+    # Stack data together
+    training_data = np.array(training_data)
 
-        # Predict
-        prediction = clf.predict(query)
-        confidence = clf.predict_proba(query)
-        confidence = max(confidence)
+    # log
+    print("Starting training/prediction")
 
-        # Record
-        if prediction[0] == query_label:
-            accuracy += 1
-            genuine_scores.append(confidence)
-        else:
-            impostor_scores.append(confidence)
+    for uid in unique_ids:
+        # Get optimal parameters for relevant columns
+        param = [p for p in params if p[0] == uid]
+        q = queries[:, param[0][1]]
+        t = training_data[:, param[0][1]]
 
-    # DEBUG
-    if debug == 1:
-        print('Fold accuracy: ' + str(accuracy / len(test))) 
-            
-    # record accuracy over fold
-    total_accuracy += accuracy / len(test)
+        # Fit to KNN using relevant columns
+        clf = GridSearchCV(knn, parameters, cv=k_folds)
+        clf.fit(t, training_ids)
 
-# Plot results
-total_accuracy = total_accuracy / k_folds
+        # predict
+        predictions = clf.predict(q)
+        confidence = clf.predict_proba(q)
 
-# Record/Output Data
-# Note which features were selected and total accuracy
-f = open("./RESULTS/results.txt", 'a+')
-index = 0
-f.write("-" * 25 + "\nfeatures Selected:\n")
-for i in raw_data.columns:
-    f.write(str(index) + ": " + i + "\n")
-    index += 1
-f.write("Total accuracy: " + str(total_accuracy) + "\n")
-f.write("-" * 25 + "\n\n")
-f.close()
+        # Save predictions
+        for i in range(len(predictions)):
+            # Append the scores
+            if predictions[i] == query_ids[i]:
+                genuine_scores.append(confidence[i][predictions[i]])
+            else:
+                imposter_scores.append(confidence[i][predictions[i]])
 
-# Courtesy of Dr. Tempest Neil
-perf_main(genuine_scores, impostor_scores)
+    # log
+    print("Finished training/prediction")
+
+    # Measure fold performance
+    import pdb; pdb.set_trace()  # breakpoint 95dbf694 //
+    all_scores = genuine_scores + imposter_scores
+    eer, far, frr, tpr = p.getScores(genuine_scores, imposter_scores)
+    fold_performance.append((eer, far, frr, tpr))
+
+    # Plot
+    p.plot_scoreDist(genuine_scores, imposter_scores, name=counter)
+
+
+# Plot Performance
+p.plot_det(fold_performance, name="knn-chebyshev")
+p.plot_roc(fold_performance, name="knn-chebyshev")

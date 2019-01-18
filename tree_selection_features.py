@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # The function that will be called
-def get_features(raw_data, raw_data_ids, debug=1):
+def get_features(raw_data, raw_data_ids, debug=0):
     '''
     Uses tree selection to determine feature importance
     then used the avg of the importance to remove unneeded features
@@ -40,5 +40,4 @@ def get_features(raw_data, raw_data_ids, debug=1):
     	plt.show()
 
     # return
-    print("TREE BASED SELECTION: Suggesting: ", len(return_columns), " columns out of ", (len(raw_data.columns)))
     return return_columns

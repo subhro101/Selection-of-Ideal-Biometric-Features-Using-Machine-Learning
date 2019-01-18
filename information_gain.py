@@ -1,7 +1,5 @@
 # File for the information gain feature selection algorithm
 import numpy as np
-import pandas as pd
-from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_selection import mutual_info_classif
 
 # The function which will be called
@@ -27,6 +25,5 @@ def get_features(raw_data, raw_ids):
             return_columns.append(index)
         index += 1
     
-
-    print("INFORMATION GAIN: Suggesting: ", len(return_columns), " columns out of ", (len(raw_data.columns)))
+    # return
     return return_columns

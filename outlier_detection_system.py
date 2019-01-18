@@ -1,38 +1,36 @@
-## Outlier detection implemented with Isolation Forest
+## Outliers detection implemented with Isolation Forest
 
 # Import required Libraries
 import numpy as np
 from sklearn.ensemble import IsolationForest
 
-def remove_outliers(template, template_ids):
+def remove_outliers(template):
 
     # Set variables
-    refined_data = []
-    refined_ids = []
-    clf = IsolationForest(behaviour='new', contamination='auto')
+    inliner = []
+    clf = IsolationForest(contamination=0.0)
     count = 0
 
-    # Perform leave out validation to remove outliers
-    for leave_out in range(len(template)):
+    for i in range(template.shape[0]):
+        # remove the query in question, returns the array without the query
+        temp = np.delete(template, i, axis=0)
 
-        # Get current iteration variables
-        leave_out_row = template[leave_out]
-        leave_out_row = leave_out_row.reshape(1,-1)
+        # train on the templates without the query
+        clf.fit(temp)
 
-        every_other_row = []
-        for i in range(len(template)):
-            if i != leave_out:
-                every_other_row.append(template[i])
+        # predict if the query in question is novel
+        prediction = clf.predict(template[i, :].reshape(1, -1))
 
-        # Train and predict
-        clf.fit(every_other_row)
-        prediction = clf.predict(leave_out_row)
-
-        # Save row if not outlier
+        # check the prediction
         if prediction == 1:
-            refined_data.append(template[leave_out])
-            refined_ids.append(template_ids[leave_out])
+            inliner.append(template[i, :])
             count += 1
 
-    print("Rows Kept: ", count, " out of: ", len(template))
-    return refined_data, refined_ids
+    # Check if all rows where outliers
+    if len(inliner) > 0:
+        inliner = np.stack(inliner)
+    else:
+        inliner = template
+
+    # return
+    return inliner

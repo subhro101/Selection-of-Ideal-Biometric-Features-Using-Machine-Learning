@@ -2,12 +2,11 @@
 from sklearn.feature_selection import RFECV
 from sklearn.model_selection import StratifiedKFold
 from sklearn.svm import SVC
-from sklearn.linear_model import SGDClassifier
 import matplotlib.pyplot as plt
 import numpy as np
 
 # The function which will be called
-def get_features(raw_data, raw_data_ids, debug=1):
+def get_features(raw_data, raw_data_ids, debug=0):
     '''
     Performs feature selection using recursive feature
     elimination. Returns the ideal columns of size the number
@@ -15,10 +14,10 @@ def get_features(raw_data, raw_data_ids, debug=1):
     '''
 
     # Define our estimator as a support vector machine
-    ls = SGDClassifier(max_iter=1000)
+    svc = SVC(kernel="linear")
 
     # instantiate our eliminator
-    eliminator = RFECV(estimator=ls, cv=StratifiedKFold(n_splits=2, shuffle=True), scoring='accuracy')
+    eliminator = RFECV(estimator=svc, cv=StratifiedKFold(n_splits=2, shuffle=True), scoring='accuracy')
     eliminator.fit(raw_data, raw_data_ids)
 
     # Check if just one feature left, try again if so
@@ -44,5 +43,4 @@ def get_features(raw_data, raw_data_ids, debug=1):
         plt.show()
 
     # return
-    print("RECUSRIVE FEATURE ELIMINATION: Suggesting: ", eliminator.n_features_, " columns out of ", (len(raw_data.columns))) 
     return return_columns
